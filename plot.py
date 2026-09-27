@@ -3,65 +3,86 @@
 # dependencies = ["matplotlib"]
 # ///
 
-"""
-Read the file in data/, make one picture, save it to out/.
-
-    uv run plot.py
-
-Three parts, and you will replace all three: rows() reads the file the way *your*
-file needs reading, the loop in main() picks the numbers out of it, and the plot at
-the bottom is the transformation you chose. Print before you plot.
-"""
-
-import csv
 from pathlib import Path
+import json
+import math
 
 import matplotlib.pyplot as plt
 
-FILE = "hko-daily-mean-temperature-2026.csv"   # CHANGE ME: the same name as in fetch.py
-PICTURE = "plot.png"                           # what goes into out/, and into the README
-
 HERE = Path(__file__).parent
-DATA = HERE / "data" / FILE
-OUT = HERE / "out"
+DATA_FILE = HERE / "data" / "solar_pulse_2025.json"
+OUT_FILE = HERE / "out" / "solar-pulse.png"
 
 
-def rows(path):
-    """The file as a list of lists, one per line. The Observatory puts three lines
-    of titles above the table and a legend below it, so keep only the lines that
-    start with a year."""
-    kept = []
-    with path.open(encoding="utf-8-sig", newline="") as handle:
-        for line in csv.reader(handle):
-            if line and line[0].isdigit():
-                kept.append(line)
-    return kept
+def load_solar_data(path: Path) -> list[tuple[str, float, float]]:
+    """Return (date, actual_radiation, clear_sky_radiation) for every day."""
+    with path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    parameters = data["properties"]["parameter"]
+    actual = parameters["ALLSKY_SFC_SW_DWN"]
+    clear = parameters["CLRSKY_SFC_SW_DWN"]
+
+    rows = []
+    for date in sorted(actual):
+        rows.append((date, float(actual[date]), float(clear[date])))
+    return rows
 
 
-def main():
-    table = rows(DATA)
-    print(f"{DATA.name}: {len(table)} rows. The first one: {table[0]}")
+def sky_factor(actual: float, clear: float) -> float:
+    """Compare actual solar radiation with the clear-sky value."""
+    if clear <= 0:
+        return 0.0
+    return max(0.0, min(actual / clear, 1.0))
 
-    days, values = [], []
-    for i, (year, month, day, value, quality) in enumerate(table):   # the loop over the numbers
-        if value == "***":                   # the Observatory's word for "missing"
-            continue
-        days.append(i + 1)
-        values.append(float(value))          # it arrived as text; make it a number
-    print(f"{len(values)} values, from {min(values)} to {max(values)}")
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(days, values, color="#d6591d", linewidth=1.5)
-    ax.set_xlabel("day of 2026")
-    ax.set_ylabel("daily mean temperature, °C")
-    ax.set_title("Hong Kong Observatory, 2026 so far")
-    fig.tight_layout()
+def draw_solar_pulse(rows: list[tuple[str, float, float]]) -> None:
+    values = [row[1] for row in rows]
+    max_value = max(values)
 
-    OUT.mkdir(exist_ok=True)
-    fig.savefig(OUT / PICTURE, dpi=150)
-    print(f"saved out/{PICTURE}")
+    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={"projection": "polar"})
+    ax.set_theta_direction(-1)
+    ax.set_theta_offset(math.pi / 2)
+
+    width = 2 * math.pi / len(rows) * 0.92
+
+    for index, (date, actual, clear) in enumerate(rows):
+        angle = 2 * math.pi * index / len(rows)
+        radius = actual / max_value * 4.0
+        transparency = sky_factor(actual, clear)
+
+        ax.bar(
+            angle,
+            radius,
+            width=width,
+            bottom=1.0,
+            alpha=0.25 + 0.75 * transparency,
+            linewidth=0,
+        )
+
+    ax.set_title("Solar Pulse — Hong Kong, 2025", pad=28, fontsize=18)
+    ax.set_yticklabels([])
+    ax.set_xticks([2 * math.pi * i / 12 for i in range(12)])
+    ax.set_xticklabels(
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    )
+    ax.grid(alpha=0.15)
+
+    fig.text(
+        0.5,
+        0.03,
+        "Length = daily all-sky solar radiation · opacity = actual / clear-sky radiation",
+        ha="center",
+        fontsize=10,
+    )
+
+    OUT_FILE.parent.mkdir(exist_ok=True)
+    fig.savefig(OUT_FILE, dpi=200, bbox_inches="tight")
     plt.show()
+    print(f"Saved {OUT_FILE}")
 
 
 if __name__ == "__main__":
-    main()
+    rows = load_solar_data(DATA_FILE)
+    print(f"Loaded {len(rows)} daily records")
+    draw_solar_pulse(rows)

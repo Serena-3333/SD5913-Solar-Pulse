@@ -9,7 +9,7 @@ Then, in this order, at least 150 words in total.
 New to folders, paths, or the files here whose names start with a dot? Read
 https://github.com/sd5913/pfad/blob/2026/reference/files.md first. Ten minutes. -->
 
-![what the picture is](out/plot.png)
+![what the picture is](out/solar-pulse.png)
 
 ## The phenomenon
 
