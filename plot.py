@@ -33,6 +33,8 @@ SUN_COLOURS = [
 SUN_CMAP = LinearSegmentedColormap.from_list("sun_pulse", SUN_COLOURS)
 
 BACKGROUND = "#07151C"
+CORE_BACKGROUND = "#030D18"
+CORE_RING = "#6B35B5"
 TEXT = "#F2F1EC"
 MUTED = "#AEB5BA"
 
@@ -99,14 +101,80 @@ def month_labels(year: int):
     return labels
 
 
+def draw_time_scaffold(ax, total_days: int) -> None:
+    """Mark month boundaries and add a quiet, non-data outer corona."""
+    outer_radius = INNER_RADIUS + MAX_BAR_LENGTH + 0.12
+    reference_year = 2000 if total_days == 366 else 2001
+    day_index = 0
+    for month in range(12):
+        angle = 2 * math.pi * day_index / total_days
+        ax.plot(
+            [angle, angle],
+            [INNER_RADIUS, outer_radius],
+            color=TEXT,
+            alpha=0.045,
+            linewidth=0.5,
+            zorder=0,
+        )
+        day_index += calendar.monthrange(reference_year, month + 1)[1]
+
+    theta = np.linspace(0, 2 * math.pi, 360)
+    ax.plot(
+        theta,
+        np.full_like(theta, outer_radius),
+        color="#C9A8FF",
+        alpha=0.13,
+        linewidth=0.65,
+        zorder=2,
+    )
+    particle_angles = np.linspace(0, 2 * math.pi, 32, endpoint=False)
+    ax.scatter(
+        particle_angles,
+        np.full_like(particle_angles, outer_radius + 0.045),
+        s=2.2,
+        color="#E4D5FF",
+        alpha=0.28,
+        linewidths=0,
+        zorder=3,
+    )
+
+
+def draw_solar_core(ax, pulse: float = 0.0) -> None:
+    """Draw the dark core and its subtly breathing violet ring."""
+    theta = np.linspace(0, 2 * math.pi, 360)
+    ax.fill(
+        theta,
+        np.full_like(theta, INNER_RADIUS + 0.08),
+        color=CORE_RING,
+        alpha=0.055,
+        zorder=9,
+    )
+    ax.fill(
+        theta,
+        np.full_like(theta, INNER_RADIUS),
+        color=CORE_BACKGROUND,
+        zorder=10,
+    )
+    ax.plot(
+        theta,
+        np.full_like(theta, INNER_RADIUS + 0.035 + 0.055 * pulse),
+        color=CORE_RING,
+        alpha=0.42 + 0.24 * pulse,
+        linewidth=0.85 + 0.25 * pulse,
+        zorder=11,
+    )
+
+
 def render_year(
     year: int,
     rows: list[tuple[dt.date, float, float]],
     scale_max: float,
     output_path: Path,
+    bar_progress: float = 1.0,
 ) -> None:
-    """Render one year's Solar Pulse using the same radial-bar layout."""
+    """Render one year's Solar Pulse, optionally growing the beams from the core."""
     total_days = 366 if calendar.isleap(year) else 365
+    bar_progress = max(0.0, min(bar_progress, 1.0))
 
     fig = plt.figure(figsize=(12, 10), dpi=180, facecolor=BACKGROUND)
     ax = fig.add_axes(
@@ -123,15 +191,44 @@ def render_year(
     values = [value for _, value, _ in rows]
     mean_value = sum(values) / len(values)
 
+    draw_time_scaffold(ax, total_days)
+
     for index, (date, actual, clear) in enumerate(rows):
         angle = 2 * math.pi * index / total_days
-        radius = MAX_BAR_LENGTH * actual / scale_max
+        radius = MAX_BAR_LENGTH * actual / scale_max * bar_progress
+        intensity = max(0.0, min(actual / scale_max, 1.0))
 
         # Actual / clear-sky controls visibility only.
         if clear > 0:
             transparency = max(0.30, min(actual / clear, 1.0))
         else:
             transparency = 0.55
+
+        # Soft layered bloom follows intensity without changing the data encoding.
+        if intensity > 0.60:
+            bloom_strength = (intensity - 0.60) / 0.40
+            ax.bar(
+                angle,
+                (radius + 0.18 * bar_progress),
+                width=width * 2.35,
+                bottom=INNER_RADIUS,
+                color=colour_for(actual, scale_max),
+                alpha=0.018 + bloom_strength * 0.035,
+                linewidth=0,
+                align="center",
+                zorder=1,
+            )
+            ax.bar(
+                angle,
+                (radius + 0.08 * bar_progress),
+                width=width * 1.55,
+                bottom=INNER_RADIUS,
+                color=colour_for(actual, scale_max),
+                alpha=0.025 + bloom_strength * 0.075,
+                linewidth=0,
+                align="center",
+                zorder=2,
+            )
 
         ax.bar(
             angle,
@@ -150,14 +247,7 @@ def render_year(
     ax.grid(False)
     ax.spines["polar"].set_visible(False)
 
-    # Inner solar core.
-    theta = np.linspace(0, 2 * math.pi, 360)
-    ax.fill(
-        theta,
-        np.full_like(theta, INNER_RADIUS),
-        color=BACKGROUND,
-        zorder=10,
-    )
+    draw_solar_core(ax)
 
     ax.text(
         0,
@@ -167,7 +257,7 @@ def render_year(
         fontsize=18,
         ha="center",
         va="center",
-        zorder=11,
+        zorder=12,
     )
 
     # Month labels.
@@ -203,64 +293,16 @@ def render_year(
         va="top",
     )
 
-    # Side information.
+    # Compact poster-style information panel.
     fig.text(
         0.745,
-        0.72,
-        "VISUAL LOGIC\n\n"
-        "One day = one radial bar\n"
-        "Bar length = daily solar radiation\n"
-        "Colour = radiation intensity\n"
-        "Opacity = actual / clear-sky\n\n"
-        "The same visual scale is used for\n"
-        "all 26 years, so the animation\n"
-        "remains comparable frame to frame.",
+        0.76,
+        "SOLAR RADIATION",
         color=TEXT,
-        fontsize=9,
+        fontsize=11,
         va="top",
-        linespacing=1.35,
     )
-
-    fig.text(
-        0.745,
-        0.46,
-        "DATA SOURCE\n\n"
-        "NASA POWER\n"
-        "ALLSKY_SFC_SW_DWN\n"
-        "CLRSKY_SFC_SW_DWN\n"
-        "Daily · Hong Kong\n"
-        "2000–2025",
-        color=TEXT,
-        fontsize=9,
-        va="top",
-        linespacing=1.35,
-    )
-
-    fig.text(
-        0.745,
-        0.28,
-        "THIS YEAR\n\n"
-        f"Daily mean: {mean_value:.2f} kWh/m²/day\n"
-        f"Peak: {max(values):.2f} kWh/m²/day",
-        color=TEXT,
-        fontsize=9,
-        va="top",
-        linespacing=1.35,
-    )
-
-    # Colour legend.
-    fig.text(
-        0.745,
-        0.155,
-        "DAILY SOLAR RADIATION\n"
-        "(kWh/m²/day)",
-        color=TEXT,
-        fontsize=9,
-        va="top",
-        linespacing=1.3,
-    )
-
-    legend_ax = fig.add_axes([0.745, 0.105, 0.20, 0.022])
+    legend_ax = fig.add_axes([0.745, 0.685, 0.20, 0.022])
     gradient = np.linspace(0, scale_max, 256)[None, :]
     legend_ax.imshow(
         gradient,
@@ -269,23 +311,28 @@ def render_year(
         extent=[0, scale_max, 0, 1],
     )
     legend_ax.set_yticks([])
-    legend_ax.set_xticks(np.linspace(0, scale_max, 5))
+    tick_values = np.linspace(0, scale_max, 5)
+    legend_ax.set_xticks(tick_values)
     legend_ax.set_xticklabels(
-        [f"{x:.1f}" for x in np.linspace(0, scale_max, 5)],
+        [f"{value:.1f}" for value in tick_values],
         color=TEXT,
         fontsize=7,
     )
+    legend_ax.tick_params(axis="x", colors=TEXT, length=2, pad=2)
     for spine in legend_ax.spines.values():
         spine.set_visible(False)
-
-    # A simple final sentence.
+    fig.text(0.745, 0.55, "NASA POWER\nHong Kong · 2000–2025",
+             color=MUTED, fontsize=9, va="top", linespacing=1.5)
+    fig.text(0.745, 0.39, f"{year}", color=TEXT, fontsize=24, va="top")
     fig.text(
         0.745,
-        0.055,
-        "The ring turns one year of sunlight into one pulse.",
+        0.32,
+        f"Mean  {mean_value:.2f} kWh/m²/day\n"
+        f"Peak   {max(values):.2f} kWh/m²/day",
         color=MUTED,
         fontsize=8.5,
         va="top",
+        linespacing=1.7,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
