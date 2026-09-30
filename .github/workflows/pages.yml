@@ -1,0 +1,34 @@
+# From the course (sd5913/pfad, assignments/pages.yml), with the CHANGE ME
+# line pointed at our script: every push runs site.py on GitHub's machine
+# and publishes what it wrote into site/ at
+# https://serena-3333.github.io/SD5913-assignment2-Solar-Pulse/
+# site/ is output; the workflow builds it fresh and it is never committed.
+name: Build the page
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Run the script that writes site/index.html
+        run: uv run site.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
