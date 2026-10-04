@@ -1,7 +1,7 @@
 # From the course (sd5913/pfad, assignments/pages.yml), with the CHANGE ME
 # line pointed at our script: every push runs site.py on GitHub's machine
 # and publishes what it wrote into site/ at
-# https://serena-3333.github.io/SD5913-assignment2-Solar-Pulse/
+# https://serena-3333.github.io/SD5913-Solar-Pulse/
 # site/ is output; the workflow builds it fresh and it is never committed.
 name: Build the page
 on:

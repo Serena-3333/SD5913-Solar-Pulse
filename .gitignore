@@ -1,6 +1,8 @@
 # Made from data/ on every run. Commit out/; never commit site/.
 site/
 data/cache/
+# animate.py rewrites these intermediates on every run.
+out/frames/morph_*.png
 
 # Machinery, not work.
 .venv/
